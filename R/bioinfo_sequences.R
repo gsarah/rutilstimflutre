@@ -2033,3 +2033,15 @@ plotGRanges <- function(gr, main="Alignments", xlab=NULL, xlim=NULL,
     }
   }
 }
+
+##' Convert VCF file
+##'
+##' Convert genotypes from the VCF encoding into the "segregation" encoding, e.g. used in MapQTL.
+##' @param vcf.file VCF file
+##' @param ped.file file with the pedigree
+##' @param out.file path to the output file
+##' @return nothing
+##' @author Gautier Sarah, Timothee Flutre
+vcf2segreg <- function(vcf.file, ped.file, out.file){
+  invisible(2+2)
+}

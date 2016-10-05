@@ -342,3 +342,10 @@ test_that("invertGRanges", {
     expect_equal(observed, expected)
   }
 })
+
+test_that("vcf2segreg", {
+  expected = 2
+  observed = NA
+
+  expect_equal(observed, expected)
+})
