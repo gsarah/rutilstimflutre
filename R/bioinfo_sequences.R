@@ -2036,12 +2036,29 @@ plotGRanges <- function(gr, main="Alignments", xlab=NULL, xlim=NULL,
 
 ##' Convert VCF file
 ##'
-##' Convert genotypes from the VCF encoding into the "segregation" encoding, e.g. used in MapQTL.
+##' Convert genotypes from the VCF encoding into the "segregation" encoding, e.g. used in \href{https://www.kyazma.nl/index.php/MapQTL/}{MapQTL}.
 ##' @param vcf.file VCF file
 ##' @param ped.file file with the pedigree
-##' @param out.file path to the output file
+##' @param genome genome identifier (e.g. "VITVI_12x2")
+##' @param out.file path to the output file in the "loc" format (see the MapQTL format), readable by the R package \href{https://cran.r-project.org/package=qtl}{qtl}
+##' @param name name used in the header of the output file
+##' @param pop.type population type code (see MapQTL manual)
 ##' @return nothing
 ##' @author Gautier Sarah, Timothee Flutre
-vcf2segreg <- function(vcf.file, ped.file, out.file){
-  invisible(2+2)
+vcf2segreg <- function(vcf.file, ped.file, genome, out.file, name, pop.type="CP"){
+  requireNamespaces(c("VariantAnnotation"))
+  stopifnot(file.exists(vcf.file))
+  if(file.exists(out.file))
+    file.remove(out.file)
+
+  vcf <- VariantAnnotation::readVcf(file=vcf.file, genome=genome)
+
+  ## writing header
+  nsamples <- length(VariantAnnotation::samples(VariantAnnotation::header(vcf)))
+  nb.variants <- nrow(vcf)
+  write(paste("name","=",name), file=out.file, append=TRUE)
+  write(paste("popt","=",pop.type), file=out.file, append=TRUE)
+  write(paste("nloc","=",nb.variants), file=out.file, append=TRUE)
+  write(paste("nind","=",nsamples), file=out.file, append=TRUE)
+  write("", file=out.file, append=TRUE)
 }

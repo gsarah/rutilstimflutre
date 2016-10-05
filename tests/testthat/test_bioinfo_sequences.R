@@ -344,8 +344,36 @@ test_that("invertGRanges", {
 })
 
 test_that("vcf2segreg", {
-  expected = 2
-  observed = NA
-
-  expect_equal(observed, expected)
+  if(all(requireNamespace("VariantAnnotation")
+  )){
+    genome <- "fakeGenomeV0"
+    all.files <- c()
+    
+    vcf.init.file <- system.file("extdata", "example_vcf2segreg.vcf",
+                                 package="rutilstimflutre")
+    ped.init.file <-""
+    expected.loc.file <- system.file("extdata", "example.loc",
+                                 package="rutilstimflutre")
+    
+    expected.header = readLines(con=expected.loc.file, n=5)
+    
+    pre.obs.files <- tempfile()
+    observed.loc.file <- paste0(pre.obs.files, ".loc")
+    all.files <- c(all.files, observed.loc.file)
+    
+    vcf2segreg(vcf.init.file,
+               ped.init.file,
+               genome,
+               observed.loc.file,
+               name="crossX")
+    observed.header = readLines(con=expected.loc.file, n=5)
+    
+    expect_equal(observed.header, expected.header)
+    
+    for(f in all.files)
+      if(file.exists(f))
+        file.remove(f)
+  }
+  
+  
 })
