@@ -366,11 +366,11 @@ test_that("vcf2segreg", {
                genome,
                observed.loc.file,
                name="crossX")
+    
     observed.header = readLines(con=observed.loc.file, n=5)
     
     expect_equal(observed.header, expected.header)
 
-    
     
     for(f in all.files)
       if(file.exists(f))
