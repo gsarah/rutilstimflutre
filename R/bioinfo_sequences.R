@@ -2051,3 +2051,40 @@ plotGRanges <- function(gr, main="Alignments", xlab=NULL, xlim=NULL,
     }
   }
 }
+
+##' Convert GT to Alleles
+##'
+##' From Martin Morgan (see http://grokbase.com/t/r/bioconductor/135b460s2b/bioc-how-to-convert-genotype-snp-matrix-to-nucleotide-genotypes)
+##' @param vcf CollapsedVCF (see pkg VariantAnnotation)
+##' @return matrix with variants in rows and samples in columns
+##' @author Gautier SARAH
+##' @export
+gtVcf2alleles <- function(vcf){
+  requireNamespaces(c("S4Vectors", "VariantAnnotation"))
+  idxRef <- S4Vectors::elementLengths(VariantAnnotation::ref(vcf)) == 1L
+  idxAlt <- S4Vectors::elementLengths(VariantAnnotation::alt(vcf)) == 1L
+  if(!all(idxRef & idxAlt)) {
+    warning("not coercing multiple-element 'alt' records nor indels")
+  }
+  vcf <- vcf[idxRef & idxAlt]
+  alt <- VariantAnnotation::alt(vcf)
+  ref <- VariantAnnotation::ref(vcf)
+  
+ 
+  
+  
+  gt <- sub("\\|", "/", VariantAnnotation::geno(vcf)$GT) # ignore phasing
+  
+  rowId <- (which(gt == "0/0")-1)  %% nrow(gt) +1
+  gt[which(gt == "0/0")] <- paste(as.character(ref[rowId]),as.character(ref[rowId]),sep="")
+  
+  rowId <- (which(gt == "0/1")-1)  %% nrow(gt) +1
+  gt[which(gt == "0/1")] <- paste(as.character(ref[rowId]),GenomicRanges::as.data.frame(alt)[rowId,3],sep="")
+  
+  rowId <- (which(gt == "1/1")-1)  %% nrow(gt) +1
+  gt[which(gt == "1/1")] <- paste(GenomicRanges::as.data.frame(alt)[rowId,3],GenomicRanges::as.data.frame(alt)[rowId,3],sep="")
+  
+  gt[which(gt == ".")] <- NA
+  
+  return(gt)
+}
