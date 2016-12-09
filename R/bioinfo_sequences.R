@@ -2084,7 +2084,92 @@ gtVcf2alleles <- function(vcf){
   rowId <- (which(gt == "1/1")-1)  %% nrow(gt) +1
   gt[which(gt == "1/1")] <- paste(GenomicRanges::as.data.frame(alt)[rowId,3],GenomicRanges::as.data.frame(alt)[rowId,3],sep="")
   
-  gt[which(gt == ".")] <- NA
+  gt[which(gt == ".")] <- "NN"
   
   return(gt)
+}
+
+##' Convert VCF to Allele file
+##'
+##' Convert genotypes at bi-allelic variants from a VCF file into allele.
+##' @param vcf.file path to the VCF file (bgzip index should exist in same directory; should only contain SNPs and be already filtered for QD, FS, MQ, etc)
+##' @param genome genome identifier (e.g. "VITVI_12x2")
+##' @param gallele.file path to the output file to record genotypes as allele (will be gzipped)
+##' @param yieldSize number of records to yield each time the file is read from (see ?TabixFile) if seq.id is NULL
+##' @param dict.file path to the SAM dict file (see \url{https://broadinstitute.github.io/picard/command-line-overview.html#CreateSequenceDictionary}) if seq.id is specified with no start/end
+##' @param seq.id sequence identifier to work on (e.g. "chr2")
+##' @param seq.start start of the sequence to work on (if NULL, whole seq)
+##' @param seq.end end of the sequence to work on (if NULL, whole seq)
+##' @return an invisible list with both output file paths
+##' @author Gautier Sarah, Timothée Flutre
+##' @export
+vcf2genoAllele <- function(vcf.file, genome, gallele.file,
+                       yieldSize=NA_integer_, dict.file=NULL,
+                       seq.id=NULL, seq.start=NULL, seq.end=NULL){
+  requireNamespaces(c("IRanges", "GenomicRanges", "VariantAnnotation",
+                      "Rsamtools"))
+  stopifnot(file.exists(vcf.file),
+            xor(is.na(yieldSize), is.null(seq.id)))
+  if(! is.null(seq.id) & is.null(seq.start) & is.null(seq.end))
+    stopifnot(! is.null(dict),
+              file.exists(dict.file))
+  
+  if(file.exists(gallele.file))
+    file.remove(gallele.file)
+  
+  gallele.file <- sub("\\.gz$", "", gallele.file)
+  gallele.con <- file(gallele.file, open="a")
+  
+  tabix.file <- Rsamtools::TabixFile(file=vcf.file,
+                                     yieldSize=yieldSize)
+  if(! is.null(seq.id)){
+    if(is.null(seq.start) & is.null(seq.end)){
+      dict <- readSamDict(file=dict.file)
+      if(! seq.id %in% rownames(dict)){
+        msg <- paste0("seq '", seq.id, "' not in '", dict.file, "'")
+        stop(msg)
+      }
+      rngs <- GenomicRanges::GRanges(seqnames=c(seq.id),
+                                     ranges=IRanges::IRanges(start=c(1),
+                                                             end=c(dict$LN[rownames(dict) == seq.id])))
+    } else
+      rngs <- GenomicRanges::GRanges(seqnames=c(seq.id),
+                                     ranges=IRanges::IRanges(start=c(seq.start),
+                                                             end=c(seq.end)))
+    names(rngs) <- c(seq.id)
+    vcf.params <- VariantAnnotation::ScanVcfParam(which=rngs)
+    vcf <- VariantAnnotation::readVcf(file=tabix.file, genome=genome,
+                                      param=vcf.params)
+    nb.variants <- nrow(vcf)
+    gtmp <- gtVcf2alleles(vcf)
+    cat(paste(colnames(gtmp), collapse="\t"), file=gallele.con,
+        append=TRUE, sep="\n")
+    utils::write.table(x=gtmp,
+                       file=gdose.con, append=TRUE,
+                       quote=FALSE, sep="\t", row.names=TRUE,
+                       col.names=FALSE)
+  } else{
+    open(tabix.file)
+    nb.variants <- 0
+    while(nrow(vcf <- VariantAnnotation::readVcf(file=tabix.file,
+                                                 genome=genome))){
+      gtmp <- gtVcf2alleles(vcf)
+      if(nb.variants == 0)
+        cat(paste(colnames(gtmp), collapse="\t"), file=gallele.con,
+            append=TRUE, sep="\n")
+      nb.variants <- nb.variants + nrow(vcf)
+      utils::write.table(x=gtmp, file=gallele.con, append=TRUE,
+                         quote=FALSE, sep="\t", row.names=TRUE, col.names=FALSE)
+    }
+    close(tabix.file)
+  }
+  
+  close(gallele.con)
+  gz.out.file <- paste0(gallele.file, ".gz")
+  if(file.exists(gz.out.file))
+    file.remove(gz.out.file)
+  
+  system(command=paste("gzip", gallele.file))
+  
+  invisible(gz.out.file)
 }
