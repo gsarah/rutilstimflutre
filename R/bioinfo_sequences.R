@@ -1460,20 +1460,31 @@ summaryVariant <- function(vcf.file, genome, yieldSize=10^4, field="GQ",
   return(all.smry)
 }
 
+##' Keep single-element VCF records
+##'
+##' Returns a vcf object in which all multi-element 'ref' or 'alt' records and indels were discarded.
+##' @param vcf CollapsedVCF (see pkg VariantAnnotation)
+##' @return vcf CollapsedVCF 
+##' @author Gautier Sarah, Timothee Flutre
+##' @export
+getVcfOnlySingleElem <- function(vcf){
+  requireNamespaces(c("S4Vectors", "VariantAnnotation"))
+  idxRef <- S4Vectors::elementLengths(VariantAnnotation::ref(vcf)) == 1L
+  idxAlt <- S4Vectors::elementLengths(VariantAnnotation::alt(vcf)) == 1L
+  return(vcf[idxRef & idxAlt])
+}
+
 ##' Convert GT to dosage
 ##'
+##' Non-bi-allelic variants are discarded.
 ##' From Martin Morgan (see http://grokbase.com/t/r/bioconductor/135b460s2b/bioc-how-to-convert-genotype-snp-matrix-to-nucleotide-genotypes)
 ##' @param vcf CollapsedVCF (see pkg VariantAnnotation)
 ##' @return matrix with variants in rows and samples in columns
 ##' @author Timothee Flutre
 ##' @export
 gtVcf2dose <- function(vcf){
-  requireNamespaces(c("S4Vectors", "VariantAnnotation"))
-  idx <- S4Vectors::elementLengths(VariantAnnotation::alt(vcf)) == 1L
-  if(!all(idx)) {
-    warning("only coercing single-element 'alt' records")
-  }
-  vcf <- vcf[idx]
+  requireNamespace("VariantAnnotation")
+  vcf <- getVcfOnlySingleElem(vcf)
   gt <- sub("\\|", "/", VariantAnnotation::geno(vcf)$GT) # ignore phasing
   gt[which(gt == "0/0")] <- 0
   gt[which(gt == "0/1")] <- 1
@@ -1491,13 +1502,9 @@ gtVcf2dose <- function(vcf){
 ##' @author Timothee Flutre
 ##' @export
 rngVcf2df <- function(vcf){
-  requireNamespaces(c("S4Vectors", "VariantAnnotation", "GenomeInfoDb",
-                      "BiocGenerics", "SummarizedExperiment"))
-  idx <- S4Vectors::elementLengths(VariantAnnotation::alt(vcf)) == 1L
-  if(!all(idx)) {
-    warning("only coercing single-element 'alt' records")
-  }
-  vcf <- vcf[idx]
+  requireNamespaces(c("GenomeInfoDb", "BiocGenerics",
+                      "SummarizedExperiment"))
+  vcf <- getVcfOnlySingleElem(vcf)
   tmp <- SummarizedExperiment::rowRanges(vcf)
   out <- data.frame(chrom=as.character(GenomeInfoDb::seqnames(tmp)),
                     start=BiocGenerics::start(tmp) - 1,
@@ -2054,58 +2061,58 @@ plotGRanges <- function(gr, main="Alignments", xlab=NULL, xlim=NULL,
 
 ##' Convert GT to Alleles
 ##'
+##' Non-bi-allelic variants are discarded.
 ##' From Martin Morgan (see http://grokbase.com/t/r/bioconductor/135b460s2b/bioc-how-to-convert-genotype-snp-matrix-to-nucleotide-genotypes)
 ##' @param vcf CollapsedVCF (see pkg VariantAnnotation)
+##' @param na.symbol a symbol to indicate missing genotypes (e.g. "NN" or NA)
 ##' @return matrix with variants in rows and samples in columns
 ##' @author Gautier SARAH
 ##' @export
-gtVcf2alleles <- function(vcf){
-  requireNamespaces(c("S4Vectors", "VariantAnnotation"))
-  idxRef <- S4Vectors::elementLengths(VariantAnnotation::ref(vcf)) == 1L
-  idxAlt <- S4Vectors::elementLengths(VariantAnnotation::alt(vcf)) == 1L
-  if(!all(idxRef & idxAlt)) {
-    warning("not coercing multiple-element 'alt' records nor indels")
-  }
-  vcf <- vcf[idxRef & idxAlt]
+gtVcf2alleles <- function(vcf, na.symbol="NN"){
+  requireNamespaces(c("VariantAnnotation", "GenomicRanges"))
+  vcf <- getVcfOnlySingleElem(vcf)
   alt <- VariantAnnotation::alt(vcf)
   ref <- VariantAnnotation::ref(vcf)
-  
- 
-  
-  
+
   gt <- sub("\\|", "/", VariantAnnotation::geno(vcf)$GT) # ignore phasing
-  
-  rowId <- (which(gt == "0/0")-1)  %% nrow(gt) +1
-  gt[which(gt == "0/0")] <- paste(as.character(ref[rowId]),as.character(ref[rowId]),sep="")
-  
-  rowId <- (which(gt == "0/1")-1)  %% nrow(gt) +1
-  gt[which(gt == "0/1")] <- paste(as.character(ref[rowId]),GenomicRanges::as.data.frame(alt)[rowId,3],sep="")
-  
-  rowId <- (which(gt == "1/1")-1)  %% nrow(gt) +1
-  gt[which(gt == "1/1")] <- paste(GenomicRanges::as.data.frame(alt)[rowId,3],GenomicRanges::as.data.frame(alt)[rowId,3],sep="")
-  
-  gt[which(gt == ".")] <- "NN"
-  
+
+  rowId <- (which(gt == "0/0")-1)  %% nrow(gt) + 1
+  gt[which(gt == "0/0")] <- paste0(as.character(ref[rowId]),
+                                   as.character(ref[rowId]))
+
+  rowId <- (which(gt == "0/1")-1)  %% nrow(gt) + 1
+  gt[which(gt == "0/1")] <- paste0(as.character(ref[rowId]),
+                                   GenomicRanges::as.data.frame(alt)[rowId,3])
+
+  rowId <- (which(gt == "1/1")-1)  %% nrow(gt) + 1
+  gt[which(gt == "1/1")] <- paste0(GenomicRanges::as.data.frame(alt)[rowId,3],
+                                   GenomicRanges::as.data.frame(alt)[rowId,3])
+
+  gt[which(gt == ".")] <- na.symbol
+
   return(gt)
 }
 
-##' Convert VCF to Allele file
+##' Convert VCF to "allele" format
 ##'
-##' Convert genotypes at bi-allelic variants from a VCF file into allele.
+##' Convert genotypes at bi-allelic variants from a VCF file into the "allele" format.
 ##' @param vcf.file path to the VCF file (bgzip index should exist in same directory; should only contain SNPs and be already filtered for QD, FS, MQ, etc)
 ##' @param genome genome identifier (e.g. "VITVI_12x2")
-##' @param gallele.file path to the output file to record genotypes as allele (will be gzipped)
-##' @param yieldSize number of records to yield each time the file is read from (see ?TabixFile) if seq.id is NULL
+##' @param genoallele.file path to the output file to record genotypes into the "allele" format (will be gzipped)
+##' @param yieldSize number of records to yield each time the file is read from (see \code{?TabixFile}) if seq.id is NULL
 ##' @param dict.file path to the SAM dict file (see \url{https://broadinstitute.github.io/picard/command-line-overview.html#CreateSequenceDictionary}) if seq.id is specified with no start/end
 ##' @param seq.id sequence identifier to work on (e.g. "chr2")
 ##' @param seq.start start of the sequence to work on (if NULL, whole seq)
 ##' @param seq.end end of the sequence to work on (if NULL, whole seq)
-##' @return an invisible list with both output file paths
-##' @author Gautier Sarah, Timothée Flutre
+##' @param na.symbol a symbol to indicate missing genotypes (e.g. "NN" or NA)
+##' @param verbose verbosity level (0/1)
+##' @return invisible vector with the path to the output file
+##' @author Gautier Sarah, Timothee Flutre
 ##' @export
-vcf2genoAllele <- function(vcf.file, genome, gallele.file,
-                       yieldSize=NA_integer_, dict.file=NULL,
-                       seq.id=NULL, seq.start=NULL, seq.end=NULL){
+vcf2genoAllele <- function(vcf.file, genome, genoallele.file,
+                           yieldSize=NA_integer_, dict.file=NULL,
+                           seq.id=NULL, seq.start=NULL, seq.end=NULL,
+                           na.symbol="NN", verbose=0){
   requireNamespaces(c("IRanges", "GenomicRanges", "VariantAnnotation",
                       "Rsamtools"))
   stopifnot(file.exists(vcf.file),
@@ -2114,11 +2121,11 @@ vcf2genoAllele <- function(vcf.file, genome, gallele.file,
     stopifnot(! is.null(dict),
               file.exists(dict.file))
   
-  if(file.exists(gallele.file))
-    file.remove(gallele.file)
+  if(file.exists(genoallele.file))
+    file.remove(genoallele.file)
   
-  gallele.file <- sub("\\.gz$", "", gallele.file)
-  gallele.con <- file(gallele.file, open="a")
+  genoallele.file <- sub("\\.gz$", "", genoallele.file)
+  genoallele.con <- file(genoallele.file, open="a")
   
   tabix.file <- Rsamtools::TabixFile(file=vcf.file,
                                      yieldSize=yieldSize)
@@ -2141,11 +2148,11 @@ vcf2genoAllele <- function(vcf.file, genome, gallele.file,
     vcf <- VariantAnnotation::readVcf(file=tabix.file, genome=genome,
                                       param=vcf.params)
     nb.variants <- nrow(vcf)
-    gtmp <- gtVcf2alleles(vcf)
-    cat(paste(colnames(gtmp), collapse="\t"), file=gallele.con,
+    gtmp <- gtVcf2alleles(vcf, na.symbol)
+    cat(paste(colnames(gtmp), collapse="\t"), file=genoallele.con,
         append=TRUE, sep="\n")
     utils::write.table(x=gtmp,
-                       file=gdose.con, append=TRUE,
+                       file=genoallele.con, append=TRUE,
                        quote=FALSE, sep="\t", row.names=TRUE,
                        col.names=FALSE)
   } else{
@@ -2153,23 +2160,28 @@ vcf2genoAllele <- function(vcf.file, genome, gallele.file,
     nb.variants <- 0
     while(nrow(vcf <- VariantAnnotation::readVcf(file=tabix.file,
                                                  genome=genome))){
-      gtmp <- gtVcf2alleles(vcf)
+      gtmp <- gtVcf2alleles(vcf, na.symbol)
       if(nb.variants == 0)
-        cat(paste(colnames(gtmp), collapse="\t"), file=gallele.con,
+        cat(paste(colnames(gtmp), collapse="\t"), file=genoallele.con,
             append=TRUE, sep="\n")
       nb.variants <- nb.variants + nrow(vcf)
-      utils::write.table(x=gtmp, file=gallele.con, append=TRUE,
+      utils::write.table(x=gtmp, file=genoallele.con, append=TRUE,
                          quote=FALSE, sep="\t", row.names=TRUE, col.names=FALSE)
     }
     close(tabix.file)
   }
-  
-  close(gallele.con)
-  gz.out.file <- paste0(gallele.file, ".gz")
+
+  if(verbose > 0){
+    msg <- paste0("nb of variants: ", nb.variants)
+    write(msg, stdout())
+  }
+
+  close(genoallele.con)
+  gz.out.file <- paste0(genoallele.file, ".gz")
   if(file.exists(gz.out.file))
     file.remove(gz.out.file)
   
-  system(command=paste("gzip", gallele.file))
+  system(command=paste("gzip", genoallele.file))
   
   invisible(gz.out.file)
 }
