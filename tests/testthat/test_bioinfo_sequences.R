@@ -342,3 +342,41 @@ test_that("invertGRanges", {
     expect_equal(observed, expected)
   }
 })
+
+test_that("vcf2genoAlleles", {
+  if(all(requireNamespace("Rsamtools"),
+         requireNamespace("VariantAnnotation"),
+         requireNamespace("IRanges"),
+         requireNamespace("S4Vectors"))){
+    genome <- "fakeGenomeV0"
+    yieldSize <- 100
+    all.files <- c()
+    
+    vcf.init.file <- system.file("extdata", "example.vcf",
+                                 package="rutilstimflutre")
+    vcf.init.file.bgz <- Rsamtools::bgzip(file=vcf.init.file,
+                                          overwrite=TRUE)
+    vcf.init.file.bgz.idx <- Rsamtools::indexTabix(file=vcf.init.file.bgz,
+                                                   format="vcf")
+    expected <- matrix(c("AA", "AC", "CC",
+                         "AC", "NN", "NN"),
+                       byrow=TRUE, nrow=2, ncol=3,
+                       dimnames=list(c("snp1", "snp2"), c("ind1", "ind2", "ind3")))
+
+    pre.obs.files <- tempfile()
+    genoallele.file <- paste0(pre.obs.files, "_genos-alleles.txt.gz")
+    all.files <- c(all.files, genoallele.file)
+    obs.file <- vcf2genoAllele(vcf.file=vcf.init.file.bgz,
+                                genome=genome,
+                                yieldSize=yieldSize,
+                                genoallele.file=genoallele.file,
+                                verbose=0)
+    observed <- as.matrix(read.table(file=genoallele.file, header=TRUE, row.names=1))
+    
+    expect_equal(observed, expected)
+    
+    for(f in all.files)
+      if(file.exists(f))
+        file.remove(f)
+  }
+})
